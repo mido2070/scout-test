@@ -5,6 +5,8 @@ export interface AttachedFile {
   data: string; // Base64 encoded string
 }
 
+// test
+
 export interface PlotData {
   id: string;
   name: string; // "Option A" or "Option B"
