@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
-import { Building2, FileText, CheckCircle, AlertTriangle, ArrowRight, UploadCloud, Gavel, Scale, Briefcase, Plus, X, Search, Loader2, Globe, History, Send, MessageSquare, ChevronDown, ChevronUp, RefreshCw, Zap, Sliders, AlertOctagon, Lightbulb, Link2, BookOpen, Trash2, Link as LinkIcon, Calendar, Target, Activity, FileWarning, PenTool, ShieldCheck, Play, Save, Users, Clock, AlertCircle, Wand2, LayoutGrid, ChevronLeft, ChevronRight as ChevronRightIcon, Download, Printer, Settings2 } from 'lucide-react';
+import React, { useState, useEffect, useContext } from 'react';
+import { FileText, CheckCircle, AlertTriangle, ArrowRight, UploadCloud, Gavel, Scale, Briefcase, Plus, X, Loader2, Globe, ChevronDown, ChevronUp, RefreshCw, Sliders, Lightbulb, BookOpen, Link as LinkIcon, Target, Users, Wand2, LayoutGrid, ChevronLeft, ChevronRight as ChevronRightIcon, Download, Printer, Settings2 } from 'lucide-react';
 import { LanguageContext } from '../App';
-import { PolicyData, PolicySector, LibraryDocument, AttachedFile, PolicyOutputLanguage, PolicyVersion, PolicyUpdate, FocusArea, WorkshopNote, WorkshopNoteType, Stakeholder, PolicyOutputFormat, CodeType, CoverageType, BoardNode, BoardEdge } from '../types';
+import { PolicyData, PolicySector, LibraryDocument, PolicyOutputLanguage, PolicyVersion, PolicyUpdate, WorkshopNote, PolicyOutputFormat, CodeType, CoverageType, BoardNode, BoardEdge } from '../types';
 import { libraryDB } from '../services/libraryDB';
-import { analyzePolicy, refinePolicyReport, chatWithAssistant } from '../services/geminiService';
+import { analyzePolicy, refinePolicyReport } from '../services/geminiService';
 import AnalysisResult from './AnalysisResult';
 import WorkshopBoard from './WorkshopBoard';
 
@@ -91,21 +91,12 @@ export const PolicyLab: React.FC = () => {
   };
 
   // Step 1: Scope & Objectives
-  const [intent, setIntent] = useState(''); 
+  const intent = ''; 
   const [domain, setDomain] = useState('Zoning & Land Use');
   const [isCustomDomain, setIsCustomDomain] = useState(false);
 
   // Step 2
-  const [workshopNotes, setWorkshopNotes] = useState<WorkshopNote[]>([]);
-  const [isAddingNote, setIsAddingNote] = useState(false);
-  const [newNote, setNewNote] = useState<Partial<WorkshopNote>>({
-      type: 'DECISION_CIRCULAR',
-      stakeholder: 'MUNICIPALITY',
-      stakeholderCustom: '',
-      text: '',
-      date: new Date().toISOString().split('T')[0], // Default to today
-      source: ''
-  });
+  const workshopNotes: WorkshopNote[] = [];
 
   // Workshop Board State
   const [isBoardOpen, setIsBoardOpen] = useState(false);
@@ -117,12 +108,7 @@ export const PolicyLab: React.FC = () => {
   const [detailLevel, setDetailLevel] = useState<'FAST' | 'DETAILED'>('FAST');
   const [outputLang, setOutputLang] = useState<PolicyOutputLanguage>('bilingual'); // Default to bilingual as per rules
 
-  // Chat
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<{id: string, role: 'user' | 'model', text: string}[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [isChatLoading, setIsChatLoading] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+
 
   const [data, setData] = useState<PolicyData>({
     country: '',
@@ -147,7 +133,7 @@ export const PolicyLab: React.FC = () => {
   const [availableDocs, setAvailableDocs] = useState<LibraryDocument[]>([]);
   const [newObjective, setNewObjective] = useState('');
   const [newPainPoint, setNewPainPoint] = useState('');
-  const [newLinkUrl, setNewLinkUrl] = useState('');
+
 
   // Sync available docs on load
   useEffect(() => {
@@ -168,11 +154,7 @@ export const PolicyLab: React.FC = () => {
       setData(prev => ({...prev, boardNodes, boardEdges}));
   }, [boardNodes, boardEdges]);
 
-  useEffect(() => {
-    if (isChatOpen) {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages, isChatOpen]);
+
 
   const handleGenerate = async () => {
       setIsLoading(true);
@@ -207,14 +189,7 @@ export const PolicyLab: React.FC = () => {
 
           const selectedDocs = availableDocs.filter(d => data.selectedSourceIds.includes(d.id));
           
-          const initialUpdate: PolicyUpdate = {
-              intent: activeIntent,
-              domain: domain,
-              workshopNotes: [],
-              outputFormat: 'BRIEF',
-              detailLevel: 'FAST',
-              language: outputLang
-          };
+
 
           const html = await analyzePolicy(data, selectedDocs, language);
           
@@ -274,7 +249,7 @@ export const PolicyLab: React.FC = () => {
 
           setVersions(prev => [...prev, newVer]);
           setCurrentVersionIndex(prev => prev + 1);
-          setChatMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: `Report updated to v${nextVerNum} based on workshop findings.` }]);
+
 
       } catch (error) {
           console.error("Refinement failed", error);
@@ -284,7 +259,7 @@ export const PolicyLab: React.FC = () => {
       }
   };
 
-  const handleSourceToggle = (id: string) => { setData(prev => ({...prev, selectedSourceIds: prev.selectedSourceIds.includes(id) ? prev.selectedSourceIds.filter(s => s!==id) : [...prev.selectedSourceIds, id]})) };
+
   const handleRemoveItem = (field: 'objectives' | 'painPoints', index: number) => { setData(prev => ({ ...prev, [field]: prev[field].filter((_, i) => i !== index) })) };
   
   const handleAddObjective = () => {
@@ -316,7 +291,7 @@ export const PolicyLab: React.FC = () => {
           }
       }
   };
-  const handleAddLinkSource = () => { if (!newLinkUrl.trim()) return; setData(prev => ({ ...prev, customSources: [...prev.customSources, { id: crypto.randomUUID(), type: 'LINK', title: newLinkUrl, url: newLinkUrl }] })); setNewLinkUrl(''); };
+
   const removeCustomSource = (id: string) => { setData(prev => ({ ...prev, customSources: prev.customSources.filter(s => s.id !== id) })); };
 
   const removeSupportingFile = (index: number) => {
