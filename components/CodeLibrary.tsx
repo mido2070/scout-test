@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { UploadCloud, FileText, Search, Plus, Trash2, BookOpen, Building2, MapPin, Tag, Link as LinkIcon, Globe, X, ExternalLink, ShieldCheck, Copy, Flag, Info, Lock, Users } from 'lucide-react';
+import { UploadCloud, FileText, Search, Plus, Trash2, BookOpen, Building2, MapPin, Tag, Link as LinkIcon, Globe, ExternalLink, ShieldCheck, Copy, Flag, Lock, Users } from 'lucide-react';
 import { LibraryDocument, CodeType, CoverageType } from '../types';
 import { libraryDB } from '../services/libraryDB';
 import { LanguageContext } from '../App';

@@ -1,7 +1,23 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { AnalysisMode, PlotData, Language, AttachedFile, CodeType, PolicyData, LibraryDocument, PolicyUpdate, PolicySector } from "../types";
+import { AnalysisMode, PlotData, Language, PolicyData, LibraryDocument, PolicyUpdate, PolicySector } from "../types";
 import { libraryDB } from "./libraryDB";
+
+const getApiKey = (): string => {
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    if (import.meta.env.VITE_GEMINI_API_KEY) return import.meta.env.VITE_GEMINI_API_KEY;
+    if (import.meta.env.VITE_API_KEY) return import.meta.env.VITE_API_KEY;
+  }
+  if (typeof process !== 'undefined' && process.env) {
+    if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+    if (process.env.API_KEY) return process.env.API_KEY;
+  }
+  if (typeof window !== 'undefined') {
+    if (window.GEMINI_API_KEY) return window.GEMINI_API_KEY;
+    if (window.API_KEY) return window.API_KEY;
+  }
+  return "";
+};
 
 // --- SELF-LEARNING MEMORY SYSTEM ---
 // Uses LocalStorage to persist zoning knowledge by City/Country
@@ -253,9 +269,10 @@ export const analyzePolicy = async (
     libraryDocs: LibraryDocument[],
     uiLanguage: Language
 ): Promise<string> => {
-    if (!process.env.API_KEY) throw new Error("API Key is missing.");
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error("API Key is missing. Please configure VITE_GEMINI_API_KEY or GEMINI_API_KEY environment variable.");
     
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey });
 
     // 1. Prepare Context from Library
     let sourceContext = libraryDocs.map(d => 
@@ -458,8 +475,9 @@ export const refinePolicyReport = async (
     updatePayload: PolicyUpdate,
     versionNumber: number
 ): Promise<{ html: string; changeLog: string }> => {
-    if (!process.env.API_KEY) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error("API Key is missing. Please configure VITE_GEMINI_API_KEY or GEMINI_API_KEY environment variable.");
+    const ai = new GoogleGenAI({ apiKey });
 
     // Prepare board summary if available
     let boardSummary = "No workshop board data.";
@@ -559,9 +577,10 @@ export const analyzeZoning = async (
   dataB: PlotData | undefined,
   language: Language
 ): Promise<{ html: string; groundingMetadata: any }> => {
-  if (!process.env.API_KEY) throw new Error("API Key is missing.");
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error("API Key is missing. Please configure VITE_GEMINI_API_KEY or GEMINI_API_KEY environment variable.");
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
 
   // 1. Fetch relevant library documents (Context Retrieval)
   let libraryContext = "";
@@ -623,8 +642,9 @@ export const analyzeZoning = async (
 };
 
 export const translateReport = async (htmlContent: string, targetLang: Language): Promise<string> => {
-    if (!process.env.API_KEY) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error("API Key is missing. Please configure VITE_GEMINI_API_KEY or GEMINI_API_KEY environment variable.");
+    const ai = new GoogleGenAI({ apiKey });
 
     const prompt = `
         Translate the following HTML content to ${targetLang === 'ar' ? 'Arabic' : 'English'}.
@@ -652,8 +672,9 @@ export const chatWithAssistant = async (
     lastMessage: string, 
     context: { plot?: PlotData, analysisResult?: string | null, language: Language, policyContext?: any }
 ): Promise<string> => {
-     if (!process.env.API_KEY) throw new Error("API Key is missing.");
-     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+     const apiKey = getApiKey();
+     if (!apiKey) throw new Error("API Key is missing. Please configure VITE_GEMINI_API_KEY or GEMINI_API_KEY environment variable.");
+     const ai = new GoogleGenAI({ apiKey });
 
      let systemInstruction = `You are CodeScout Assistant, an expert AI in Zoning and Construction Law.
      

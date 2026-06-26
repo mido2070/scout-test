@@ -1,5 +1,5 @@
 import React, { useContext, useState } from 'react';
-import { CheckCircle, AlertTriangle, ExternalLink, Languages, Loader2, Download, Printer, Globe2, Building2 } from 'lucide-react';
+import { AlertTriangle, ExternalLink, Languages, Loader2, Download, Printer, Globe2, Building2 } from 'lucide-react';
 import { LanguageContext } from '../App';
 import { Language } from '../types';
 

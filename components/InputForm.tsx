@@ -1,6 +1,6 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
 import { PlotData, AttachedFile, LibraryDocument, CodeType, CoverageType } from '../types';
-import { MapPin, Ruler, Building2, Map as MapIcon, PenTool, Search, FileText, UploadCloud, X, File as FileIcon, Loader2, Navigation, BookPlus, Check, ChevronRight, Hash } from 'lucide-react';
+import { MapPin, Ruler, Map as MapIcon, PenTool, FileText, UploadCloud, X, File as FileIcon, Loader2, Navigation, BookPlus, Hash } from 'lucide-react';
 import MapModal from './MapModal';
 import { LanguageContext } from '../App';
 import { libraryDB } from '../services/libraryDB';

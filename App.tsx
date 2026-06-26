@@ -1,5 +1,5 @@
 import React, { useState, createContext, useEffect } from 'react';
-import { Map, Scale, ArrowRightLeft, FileText, Loader2, Info, Globe2, BookOpen, Gavel, ChevronRight, Zap, Code2, LayoutDashboard, ScanLine, Cpu, Layers } from 'lucide-react';
+import { Scale, ArrowRightLeft, Loader2, Info, Globe2, BookOpen, Zap, LayoutDashboard, Cpu, Layers } from 'lucide-react';
 import InputForm from './components/InputForm';
 import AnalysisResult from './components/AnalysisResult';
 import CodeLibrary from './components/CodeLibrary';

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
-import { MessageSquare, X, Send, Loader2, Bot, User, Info, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
-import { PlotData, Language } from '../types';
+import { MessageSquare, X, Send, Bot, User, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+import { PlotData } from '../types';
 import { chatWithAssistant } from '../services/geminiService';
 import { LanguageContext } from '../App';
 
@@ -16,7 +16,7 @@ interface Message {
 }
 
 const ChatAssistant: React.FC<ChatAssistantProps> = ({ plotData, analysisResult }) => {
-  const { language, t } = useContext(LanguageContext);
+  const { language } = useContext(LanguageContext);
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {

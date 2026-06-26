@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Check, MapPin, MousePointer2, Loader2, Layers } from 'lucide-react';
+import { X, Check, MapPin, MousePointer2, Loader2 } from 'lucide-react';
 
 interface LocationDetails {
   lat: number;
