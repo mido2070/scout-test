@@ -1,0 +1,8 @@
+{
+  "name": "CodeScout",
+  "description": "",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}
