@@ -49,8 +49,8 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
         );
 
         if (response.ok) {
-          const result = await response.json();
-          const addr = result.address || {};
+          const result = (await response.json()) as any;
+          const addr = result?.address || {};
           const country = addr.country || '';
           const city = addr.city || addr.town || addr.village || addr.county || addr.state || '';
           const district = addr.suburb || addr.neighbourhood || addr.residential || addr.quarter || '';
@@ -99,7 +99,7 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
     try {
         const query = parts.join(', ');
         const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
-        const results = await response.json();
+        const results = (await response.json()) as any;
         if (results && results.length > 0) {
             const { lat, lon } = results[0];
             onChange('gps', `${lat}, ${lon}`);
@@ -124,7 +124,7 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
     try {
         const query = parts.join(', ');
         const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`);
-        const results = await response.json();
+        const results = (await response.json()) as any;
         if (results && results.length > 0) {
             const { lat, lon } = results[0];
             onChange('gps', `${lat}, ${lon}`);

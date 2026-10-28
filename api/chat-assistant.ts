@@ -1,22 +1,33 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { chatWithAssistant } from '../services/geminiServer';
+import { errorResponse, jsonResponse } from '../services/apiUtils';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export async function handleChatAssistant(req: Request, env?: any): Promise<Response> {
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method Not Allowed' });
+    return jsonResponse({ message: 'Method Not Allowed' }, 405);
   }
 
   try {
-    const { history, lastMessage, context } = req.body;
+    const body = await req.json() as any;
+    const { history, lastMessage, context } = body || {};
 
     if (!lastMessage || !context) {
-      return res.status(400).json({ message: 'Missing required fields: lastMessage, context' });
+      return jsonResponse(
+        { message: 'Missing required fields: lastMessage, context' },
+        400
+      );
     }
 
-    const replyText = await chatWithAssistant(history ?? [], lastMessage, context);
-    return res.status(200).json({ replyText });
+    const replyText = await chatWithAssistant(
+      history ?? [],
+      lastMessage,
+      context,
+      { request: req, env }
+    );
+    return jsonResponse({ replyText });
   } catch (error: any) {
     console.error('[API chat-assistant] Error:', error?.message || error);
-    return res.status(500).json({ message: error?.message || 'Internal Server Error' });
+    return errorResponse(error);
   }
 }
+
+export default handleChatAssistant;

@@ -1,22 +1,31 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { translateReport } from '../services/geminiServer';
+import { errorResponse, jsonResponse } from '../services/apiUtils';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export async function handleTranslateReport(req: Request, env?: any): Promise<Response> {
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method Not Allowed' });
+    return jsonResponse({ message: 'Method Not Allowed' }, 405);
   }
 
   try {
-    const { htmlContent, targetLang } = req.body;
+    const body = await req.json() as any;
+    const { htmlContent, targetLang } = body || {};
 
     if (!htmlContent || !targetLang) {
-      return res.status(400).json({ message: 'Missing required fields: htmlContent, targetLang' });
+      return jsonResponse(
+        { message: 'Missing required fields: htmlContent, targetLang' },
+        400
+      );
     }
 
-    const translatedHtml = await translateReport(htmlContent, targetLang);
-    return res.status(200).json({ translatedHtml });
+    const translatedHtml = await translateReport(htmlContent, targetLang, {
+      request: req,
+      env,
+    });
+    return jsonResponse({ translatedHtml });
   } catch (error: any) {
     console.error('[API translate-report] Error:', error?.message || error);
-    return res.status(500).json({ message: error?.message || 'Internal Server Error' });
+    return errorResponse(error);
   }
 }
+
+export default handleTranslateReport;

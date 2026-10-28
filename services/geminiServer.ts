@@ -1,8 +1,39 @@
 import { GoogleGenAI } from "@google/genai";
 import { AnalysisMode, PlotData, Language, PolicyData, LibraryDocument, PolicyUpdate, PolicySector } from "../types";
 
-const getApiKey = (): string => {
-  return process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+export interface ApiSecurityContext {
+  request?: Request;
+  env?: any;
+}
+
+export const getApiKey = (ctx?: ApiSecurityContext): string => {
+  // 1. User supplied BYOK header from client (highest priority, per-request)
+  const headerKey = ctx?.request?.headers?.get('x-gemini-api-key')?.trim();
+  if (headerKey) return headerKey;
+
+  // 2. Explicit Cloudflare Worker environment secret
+  if (ctx?.env?.GEMINI_API_KEY && typeof ctx.env.GEMINI_API_KEY === 'string') {
+    const workerSecret = ctx.env.GEMINI_API_KEY.trim();
+    if (workerSecret) return workerSecret;
+  }
+
+  // 3. Process environment (only during non-production local development)
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
+    if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY.trim();
+    if (process.env.API_KEY) return process.env.API_KEY.trim();
+  }
+
+  return "";
+};
+
+const getVerifiedApiKey = (ctx?: ApiSecurityContext): string => {
+  const apiKey = getApiKey(ctx);
+  if (!apiKey) {
+    throw new Error(
+      "No Gemini API key provided. Please click the 'API Key' button in the top navigation to add your Gemini API key (BYOK), or set GEMINI_API_KEY in Cloudflare Worker settings."
+    );
+  }
+  return apiKey;
 };
 
 const generatePrompt = (
@@ -92,7 +123,7 @@ const generatePrompt = (
     `
     : `[No prior memory for ${dataA.city}. Start fresh analysis.]`;
 
-  let prompt = `
+  return `
     You are CodeScout Pro, an advanced Urban Planning, Zoning, and Real-Estate Development Analysis Engine.
 
     YOUR GOAL:
@@ -229,8 +260,6 @@ const generatePrompt = (
     }
     LEARNING_BLOCK_END -->
   `;
-
-  return prompt;
 };
 
 // --- POLICY LAB LOGIC ---
@@ -238,11 +267,10 @@ const generatePrompt = (
 export const analyzePolicy = async (
   policyData: PolicyData,
   libraryDocs: LibraryDocument[],
-  uiLanguage: Language
+  uiLanguage: Language,
+  ctx?: ApiSecurityContext
 ): Promise<string> => {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("API Key is missing on the server. Please configure GEMINI_API_KEY environment variable.");
-  
+  const apiKey = getVerifiedApiKey(ctx);
   const ai = new GoogleGenAI({ apiKey });
 
   // 1. Prepare Context from Library
@@ -280,8 +308,6 @@ export const analyzePolicy = async (
   }
 
   const priorities = policyData.priorities || { speed: 3, safety: 5, economy: 3, feasibility: 4 };
-
-  // Determine Output Language Strategy
   const targetLang = policyData.outputLanguage === 'bilingual' ? 'bilingual' : uiLanguage;
   
   let langInstruction = "";
@@ -303,7 +329,6 @@ export const analyzePolicy = async (
       - Translate all analysis to English.
       `;
   } else {
-      // Bilingual
       langInstruction = `
       ** STRICT LANGUAGE RULE: BILINGUAL (ENGLISH + ARABIC) **
       1. Bilingual Lock: Output MUST be fully bilingual. 
@@ -428,14 +453,12 @@ export const analyzePolicy = async (
 
   try {
       const response = await ai.models.generateContent({
-          model: "gemini-3-pro-preview",
+          model: "gemini-3.8-flash",
           contents: { parts: [{ text: prompt }, ...parts] }
       });
-      const fullHtml = response.text || "";
-      
-      return fullHtml;
+      return response.text || "";
   } catch (error) {
-      console.error("Policy Refinement Error", error);
+      console.error("[geminiServer] Policy Analysis Error", error);
       throw error;
   }
 };
@@ -444,10 +467,10 @@ export const refinePolicyReport = async (
   currentHtml: string,
   policyData: PolicyData,
   updatePayload: PolicyUpdate,
-  versionNumber: number
+  versionNumber: number,
+  ctx?: ApiSecurityContext
 ): Promise<{ html: string; changeLog: string }> => {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("API Key is missing on the server. Please configure GEMINI_API_KEY environment variable.");
+  const apiKey = getVerifiedApiKey(ctx);
   const ai = new GoogleGenAI({ apiKey });
 
   // Prepare board summary if available
@@ -527,7 +550,7 @@ export const refinePolicyReport = async (
 
   try {
       const response = await ai.models.generateContent({
-          model: "gemini-3-pro-preview",
+          model: "gemini-3.8-flash",
           contents: prompt
       });
       const html = response.text || "";
@@ -535,7 +558,7 @@ export const refinePolicyReport = async (
       
       return { html, changeLog };
   } catch (error) {
-      console.error("Refinement Error", error);
+      console.error("[geminiServer] Refinement Error", error);
       throw error;
   }
 };
@@ -548,11 +571,10 @@ export const analyzeZoning = async (
   dataB: PlotData | undefined,
   language: Language,
   libraryContext: string,
-  learnedContext: string | null
+  learnedContext: string | null,
+  ctx?: ApiSecurityContext
 ): Promise<{ html: string; groundingMetadata: any }> => {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("API Key is missing on the server. Please configure GEMINI_API_KEY environment variable.");
-
+  const apiKey = getVerifiedApiKey(ctx);
   const ai = new GoogleGenAI({ apiKey });
 
   // 2. Generate Prompt (passing pre-fetched contexts)
@@ -580,10 +602,10 @@ export const analyzeZoning = async (
 
   // 4. Call Gemini
   const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview", // Use Pro for complex reasoning
+      model: "gemini-3.8-flash",
       contents: { parts },
       config: {
-          tools: [{ googleSearch: {} }], // Use Search for grounding
+          tools: [{ googleSearch: {} }],
       }
   });
 
@@ -595,9 +617,12 @@ export const analyzeZoning = async (
   };
 };
 
-export const translateReport = async (htmlContent: string, targetLang: Language): Promise<string> => {
-    const apiKey = getApiKey();
-    if (!apiKey) throw new Error("API Key is missing on the server. Please configure GEMINI_API_KEY environment variable.");
+export const translateReport = async (
+  htmlContent: string, 
+  targetLang: Language,
+  ctx?: ApiSecurityContext
+): Promise<string> => {
+    const apiKey = getVerifiedApiKey(ctx);
     const ai = new GoogleGenAI({ apiKey });
 
     const prompt = `
@@ -614,7 +639,7 @@ export const translateReport = async (htmlContent: string, targetLang: Language)
     `;
 
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview", // Flash is fast and sufficient for translation
+        model: "gemini-3.8-flash",
         contents: prompt
     });
 
@@ -624,10 +649,10 @@ export const translateReport = async (htmlContent: string, targetLang: Language)
 export const chatWithAssistant = async (
     history: any[], 
     lastMessage: string, 
-    context: { plot?: PlotData, analysisResult?: string | null, language: Language, policyContext?: any }
+    context: { plot?: PlotData, analysisResult?: string | null, language: Language, policyContext?: any },
+    ctx?: ApiSecurityContext
 ): Promise<string> => {
-     const apiKey = getApiKey();
-     if (!apiKey) throw new Error("API Key is missing on the server. Please configure GEMINI_API_KEY environment variable.");
+     const apiKey = getVerifiedApiKey(ctx);
      const ai = new GoogleGenAI({ apiKey });
 
      let systemInstruction = `You are CodeScout Assistant, an expert AI in Zoning and Construction Law.
@@ -645,7 +670,6 @@ export const chatWithAssistant = async (
         - When using technical terms in Arabic, optionally provide the English term in parentheses, e.g., "الارتداد (Setback)".
      `;
      
-     // Specific Context Injection for Policy Mode vs Plot Analysis Mode
      if (context.policyContext) {
         systemInstruction += `
             ROLE: Policy Workshop Assistant.
@@ -667,14 +691,13 @@ export const chatWithAssistant = async (
         `;
      }
 
-     // Remove the last message from history passed by UI to avoid duplication, as we send it in sendMessage
      const chatHistory = history.slice(0, -1).map(h => ({
          role: h.role === 'model' ? 'model' : 'user',
          parts: h.parts
      }));
 
      const chat = ai.chats.create({
-         model: "gemini-3-flash-preview",
+         model: "gemini-3.8-flash",
          config: { systemInstruction },
          history: chatHistory
      });

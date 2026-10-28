@@ -180,7 +180,7 @@ const MapModal: React.FC<MapModalProps> = ({ isOpen, onClose, onSave, initialCoo
       
       if (!response.ok) throw new Error('Geocoding failed');
       
-      const data = await response.json();
+      const data = (await response.json()) as any;
       const addr = data.address || {};
 
       return {

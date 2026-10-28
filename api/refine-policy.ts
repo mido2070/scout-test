@@ -1,22 +1,37 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { refinePolicyReport } from '../services/geminiServer';
+import { errorResponse, jsonResponse } from '../services/apiUtils';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export async function handleRefinePolicy(req: Request, env?: any): Promise<Response> {
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method Not Allowed' });
+    return jsonResponse({ message: 'Method Not Allowed' }, 405);
   }
 
   try {
-    const { currentHtml, policyData, updatePayload, versionNumber } = req.body;
+    const body = await req.json() as any;
+    const { currentHtml, policyData, updatePayload, versionNumber } = body || {};
 
     if (!currentHtml || !policyData || !updatePayload || !versionNumber) {
-      return res.status(400).json({ message: 'Missing required fields: currentHtml, policyData, updatePayload, versionNumber' });
+      return jsonResponse(
+        {
+          message:
+            'Missing required fields: currentHtml, policyData, updatePayload, versionNumber',
+        },
+        400
+      );
     }
 
-    const result = await refinePolicyReport(currentHtml, policyData, updatePayload, versionNumber);
-    return res.status(200).json(result);
+    const result = await refinePolicyReport(
+      currentHtml,
+      policyData,
+      updatePayload,
+      versionNumber,
+      { request: req, env }
+    );
+    return jsonResponse(result);
   } catch (error: any) {
     console.error('[API refine-policy] Error:', error?.message || error);
-    return res.status(500).json({ message: error?.message || 'Internal Server Error' });
+    return errorResponse(error);
   }
 }
+
+export default handleRefinePolicy;

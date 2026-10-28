@@ -1,11 +1,11 @@
 import React, { useState, createContext, useEffect } from 'react';
-import { Map, Scale, ArrowRightLeft, FileText, Loader2, Info, Globe2, BookOpen, Gavel, ChevronRight, Zap, Code2, LayoutDashboard, ScanLine, Cpu, Layers } from 'lucide-react';
+import { Map, Scale, ArrowRightLeft, FileText, Loader2, Info, Globe2, BookOpen, Gavel, ChevronRight, Zap, Code2, LayoutDashboard, ScanLine, Cpu, Layers, Key, Eye, EyeOff, ShieldCheck, Check, ExternalLink } from 'lucide-react';
 import InputForm from './components/InputForm';
 import AnalysisResult from './components/AnalysisResult';
 import CodeLibrary from './components/CodeLibrary';
 import { PolicyLab } from './components/PolicyLab';
 import ChatAssistant from './components/ChatAssistant';
-import { analyzeZoning, translateReport } from './services/geminiService';
+import { analyzeZoning, translateReport, getStoredApiKey, setStoredApiKey } from './services/geminiService';
 import { PlotData, AnalysisMode, AnalysisState, Language } from './types';
 
 // --- Language Context ---
@@ -315,6 +315,26 @@ const App: React.FC = () => {
     groundingMetadata: null
   });
 
+  // --- Bring Your Own Key (BYOK) State ---
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState(getStoredApiKey());
+  const [showKeyPassword, setShowKeyPassword] = useState(false);
+  const [keySavedFeedback, setKeySavedFeedback] = useState(false);
+
+  const handleSaveApiKey = () => {
+    setStoredApiKey(apiKeyInput);
+    setKeySavedFeedback(true);
+    setTimeout(() => {
+      setKeySavedFeedback(false);
+      setIsKeyModalOpen(false);
+    }, 900);
+  };
+
+  const handleClearApiKey = () => {
+    setStoredApiKey('');
+    setApiKeyInput('');
+  };
+
   const t = dictionary[language];
 
   const handleAnalyze = async () => {
@@ -421,7 +441,30 @@ const App: React.FC = () => {
             </div>
 
             {/* Right Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              {/* BYOK Key Button */}
+              <button
+                onClick={() => setIsKeyModalOpen(true)}
+                title={apiKeyInput ? "Gemini API Key Active (BYOK)" : "Enter Gemini API Key"}
+                className={`flex items-center gap-2 text-xs font-bold transition px-3 py-2 rounded-xl border ${
+                  apiKeyInput
+                    ? 'bg-emerald-50/80 text-emerald-800 border-emerald-200/80 shadow-sm hover:bg-emerald-100/80'
+                    : 'text-slate-600 hover:text-slate-900 bg-white/60 hover:bg-white border-sand-200 hover:shadow-sm'
+                }`}
+              >
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center relative ${
+                  apiKeyInput ? 'bg-emerald-500 text-white' : 'bg-sand-200 text-slate-500'
+                }`}>
+                  <Key className="w-3 h-3" />
+                  {apiKeyInput && (
+                    <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-emerald-400 rounded-full ring-1 ring-white"></span>
+                  )}
+                </div>
+                <span className="hidden sm:inline">
+                  {apiKeyInput ? (language === 'ar' ? 'مفتاح مفعّل' : 'BYOK Active') : (language === 'ar' ? 'مفتاح API' : 'API Key')}
+                </span>
+              </button>
+
               <button 
                 onClick={toggleLanguage}
                 className="flex items-center gap-2 text-xs font-bold text-slate-600 hover:text-slate-900 transition px-3 py-2 rounded-xl hover:bg-white border border-transparent hover:border-sand-200 hover:shadow-sm"
@@ -581,6 +624,118 @@ const App: React.FC = () => {
             </div>
           </div>
         </footer>
+
+        {/* --- BYOK API Key Modal --- */}
+        {isKeyModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-sand-200 p-6 relative overflow-hidden">
+              <div className="flex items-center justify-between pb-4 border-b border-sand-100">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                    apiKeyInput ? 'bg-emerald-100 text-emerald-700' : 'bg-brand-100 text-brand-700'
+                  }`}>
+                    <Key className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-base">
+                      {language === 'ar' ? 'إعداد مفتاح Gemini API' : 'Gemini API Key (BYOK)'}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      {language === 'ar' ? 'جلب مفتاحك الخاص للنشر المجاني' : 'Bring-Your-Own-Key for Cloudflare'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsKeyModalOpen(false)}
+                  className="w-8 h-8 rounded-full hover:bg-sand-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="py-4 space-y-4">
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 text-xs text-slate-600 leading-relaxed">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-900 mb-1">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    <span>{language === 'ar' ? 'خصوصية وأمان 100%' : 'Private & Secure Storage'}</span>
+                  </div>
+                  {language === 'ar'
+                    ? 'يتم تخزين المفتاح محلياً في متصفحك فقط، ويُرسل مشفراً إلى واجهة Cloudflare. لا يتم تخزينه أو تسجيله في أي خادم.'
+                    : 'Your API key is stored only in your browser LocalStorage and passed securely with your requests. It is never logged or stored on any server.'}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    {language === 'ar' ? 'مفتاح Google Gemini API' : 'Google Gemini API Key'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showKeyPassword ? 'text' : 'password'}
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="w-full px-3.5 py-2.5 pr-10 text-xs font-mono rounded-xl border border-sand-300 focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKeyPassword(!showKeyPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      {showKeyPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                  <span>{language === 'ar' ? 'لا تملك مفتاحاً؟' : 'Need a Gemini key?'}</span>
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand-600 hover:underline font-bold inline-flex items-center gap-1"
+                  >
+                    {language === 'ar' ? 'احصل على مفتاح مجاني' : 'Get free key at Google AI Studio'}
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-4 border-t border-sand-100 gap-2">
+                <button
+                  type="button"
+                  onClick={handleClearApiKey}
+                  disabled={!apiKeyInput}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-30 disabled:pointer-events-none transition"
+                >
+                  {language === 'ar' ? 'مسح المفتاح' : 'Clear Key'}
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsKeyModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-sand-100 transition"
+                  >
+                    {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveApiKey}
+                    className="px-5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition flex items-center gap-1.5 shadow-md"
+                  >
+                    {keySavedFeedback ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>{language === 'ar' ? 'تم الحفظ!' : 'Saved!'}</span>
+                      </>
+                    ) : (
+                      <span>{language === 'ar' ? 'حفظ المفتاح' : 'Save Key'}</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </LanguageContext.Provider>
   );
