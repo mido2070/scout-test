@@ -290,9 +290,8 @@ const WorkshopBoard: React.FC<WorkshopBoardProps> = ({ nodes, edges, isOpen, onC
                       <div className="pt-4 border-t border-sand-100 flex gap-2">
                           <button 
                             onClick={() => { 
-                                if (!editingNode) return;
                                 const newStatus: 'DRAFT' | 'APPROVED' = editingNode.status === 'APPROVED' ? 'DRAFT' : 'APPROVED';
-                                const updated: BoardNode = {...editingNode, status: newStatus};
+                                const updated = {...editingNode, status: newStatus};
                                 setEditingNode(updated);
                                 updateNode(updated); 
                             }}

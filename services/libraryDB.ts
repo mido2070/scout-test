@@ -1,5 +1,5 @@
 
-import { LibraryDocument, LibraryVisibility } from '../types';
+import { LibraryDocument, CodeType, LibraryVisibility } from '../types';
 
 const DB_NAME = 'CodeScoutLibraryDB';
 const STORE_NAME = 'documents';
