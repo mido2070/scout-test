@@ -66,11 +66,12 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ plotData, analysisResult 
         text: responseText 
       };
       setMessages(prev => [...prev, botMsg]);
-    } catch (error) {
+    } catch (error: any) {
+      const errMsg = error?.message || "Sorry, I encountered an error. Please try again.";
       setMessages(prev => [...prev, { 
         id: Date.now().toString(), 
         role: 'model', 
-        text: "Sorry, I encountered an error. Please try again." 
+        text: errMsg 
       }]);
     } finally {
       setIsLoading(false);
@@ -217,7 +218,7 @@ const ChatAssistant: React.FC<ChatAssistantProps> = ({ plotData, analysisResult 
       <div className="p-4 bg-white/80 border-t border-sand-200 flex gap-2 shrink-0 items-center backdrop-blur-md">
         <input
           type="text"
-          value={inputValue}
+          value={inputValue || ''}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyPress}
           placeholder={language === 'ar' ? 'اسأل عن النظام...' : 'Ask about regulations...'}

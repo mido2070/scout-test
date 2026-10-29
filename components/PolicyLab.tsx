@@ -228,9 +228,9 @@ export const PolicyLab: React.FC = () => {
           setVersions([v1]);
           setCurrentVersionIndex(0);
           setStep(3);
-      } catch (error) {
+      } catch (error: any) {
           console.error(error);
-          alert("Analysis Failed. Please try again.");
+          alert(error?.message || "Analysis Failed. Please try again.");
       } finally {
           setIsLoading(false);
       }
@@ -276,9 +276,9 @@ export const PolicyLab: React.FC = () => {
           setCurrentVersionIndex(prev => prev + 1);
           setChatMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: `Report updated to v${nextVerNum} based on workshop findings.` }]);
 
-      } catch (error) {
+      } catch (error: any) {
           console.error("Refinement failed", error);
-          alert("Failed to update report.");
+          alert(error?.message || "Failed to update report.");
       } finally {
           setIsLoading(false);
       }
@@ -649,7 +649,7 @@ export const PolicyLab: React.FC = () => {
                             {['country', 'city', 'district'].map(field => (
                                 <div key={field} className="group/input">
                                     <label className={labelClass}>{t[field] || field}</label>
-                                    <input type="text" value={(data as any)[field]} onChange={e => setData({...data, [field]: e.target.value})} className={inputClass} placeholder={t[field] || field} />
+                                    <input type="text" value={(data as any)[field] || ''} onChange={e => setData({...data, [field]: e.target.value})} className={inputClass} placeholder={t[field] || field} />
                                 </div>
                             ))}
                             <div className="group/input">
@@ -744,7 +744,7 @@ export const PolicyLab: React.FC = () => {
                                 {isCustomDomain && (
                                     <input 
                                         type="text"
-                                        value={domain}
+                                        value={domain || ''}
                                         onChange={e => setDomain(e.target.value)}
                                         placeholder={language === 'ar' ? "حدد المجال..." : "Specify custom domain..."}
                                         className={`${inputClass} border-brand-200 bg-brand-50/50 focus:ring-brand-100`}
@@ -838,7 +838,7 @@ export const PolicyLab: React.FC = () => {
                         <div>
                             <label className={labelClass}>{t.qualitativeContext}</label>
                             <textarea 
-                                value={data.evidenceText} 
+                                value={data.evidenceText || ''} 
                                 onChange={e => setData({...data, evidenceText: e.target.value})} 
                                 className={`${inputClass} min-h-[100px] h-auto`}
                                 placeholder={language === 'ar' ? "صف حوادث معينة، ملاحظات أصحاب المصلحة، أو مشاهدات ميدانية..." : "Describe specific incidents, stakeholder feedback, or field observations..."}

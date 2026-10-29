@@ -6,6 +6,7 @@ export interface QuotaStatus {
   allowed: boolean;
   status: number;
   reason?: string;
+  message?: string;
   userRemaining: number;
   globalRemaining: number;
   dateUtc: string;
@@ -41,6 +42,43 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
   return headers;
 };
 
+// --- ROBUST API RESPONSE PARSER ---
+/**
+ * Safely parse JSON from an API Response.
+ * Verifies Content-Type is application/json before parsing.
+ * If HTML or invalid response is returned, displays a clean user-facing error message
+ * without leaking raw HTML or JSON parse syntax errors.
+ */
+async function parseJsonResponse<T = any>(
+  response: Response,
+  defaultErrorMessage: string
+): Promise<T> {
+  const contentType = (response.headers.get('content-type') || '').toLowerCase();
+
+  // If server unexpectedly returned HTML (e.g. SPA fallback, Cloudflare error page):
+  if (!contentType.includes('application/json')) {
+    throw new Error(
+      'CodeScout API is temporarily unavailable. The server returned an unexpected response.'
+    );
+  }
+
+  let data: any;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(
+      'CodeScout API is temporarily unavailable. The server returned an unexpected response.'
+    );
+  }
+
+  if (!response.ok) {
+    const errorMsg = data?.message || data?.error || defaultErrorMessage;
+    throw new Error(errorMsg);
+  }
+
+  return data as T;
+}
+
 // --- SELF-LEARNING MEMORY SYSTEM ---
 const getMemoryKey = (city: string, country: string) => 
   `codescout_kb_${country.toLowerCase().trim()}_${city.toLowerCase().trim()}`;
@@ -60,22 +98,39 @@ export const fetchUsageStatus = async (): Promise<QuotaStatus> => {
   try {
     const headers = await getAuthHeaders();
     const res = await fetch('/api/usage-status', { headers });
-    if (!res.ok) {
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+
+    if (!contentType.includes('application/json')) {
       return {
-        allowed: true,
-        status: 200,
-        userRemaining: 3,
-        globalRemaining: 30,
+        allowed: false,
+        status: res.status || 503,
+        reason: 'CodeScout API is temporarily unavailable. The server returned an unexpected response.',
+        userRemaining: 0,
+        globalRemaining: 0,
         dateUtc: new Date().toISOString().split('T')[0],
       };
     }
-    return (await res.json()) as QuotaStatus;
+
+    const data = (await res.json().catch(() => null)) as any;
+    if (!res.ok || !data) {
+      return {
+        allowed: false,
+        status: res.status || 503,
+        reason: data?.message || 'Quota service is currently unavailable.',
+        userRemaining: 0,
+        globalRemaining: 0,
+        dateUtc: new Date().toISOString().split('T')[0],
+      };
+    }
+
+    return data as QuotaStatus;
   } catch {
     return {
-      allowed: true,
-      status: 200,
-      userRemaining: 3,
-      globalRemaining: 30,
+      allowed: false,
+      status: 503,
+      reason: 'CodeScout API is temporarily unavailable. The server returned an unexpected response.',
+      userRemaining: 0,
+      globalRemaining: 0,
       dateUtc: new Date().toISOString().split('T')[0],
     };
   }
@@ -99,12 +154,10 @@ export const analyzePolicy = async (
     body: JSON.stringify({ policyData, libraryDocs, uiLanguage }),
   });
 
-  if (!response.ok) {
-    const err = (await response.json().catch(() => ({ message: response.statusText }))) as any;
-    throw new Error(err?.message || `Policy analysis failed (Status ${response.status})`);
-  }
-
-  const data = (await response.json()) as any;
+  const data = await parseJsonResponse<{ reportHtml: string }>(
+    response,
+    `Policy analysis failed (Status ${response.status})`
+  );
   return data.reportHtml;
 };
 
@@ -125,12 +178,10 @@ export const refinePolicyReport = async (
     body: JSON.stringify({ currentHtml, policyData, updatePayload, versionNumber }),
   });
 
-  if (!response.ok) {
-    const err = (await response.json().catch(() => ({ message: response.statusText }))) as any;
-    throw new Error(err?.message || `Policy refinement failed (Status ${response.status})`);
-  }
-
-  return (await response.json()) as { html: string; changeLog: string };
+  return parseJsonResponse<{ html: string; changeLog: string }>(
+    response,
+    `Policy refinement failed (Status ${response.status})`
+  );
 };
 
 export const analyzeZoning = async (
@@ -174,12 +225,10 @@ export const analyzeZoning = async (
     }),
   });
 
-  if (!response.ok) {
-    const err = (await response.json().catch(() => ({ message: response.statusText }))) as any;
-    throw new Error(err?.message || `Zoning analysis failed (Status ${response.status})`);
-  }
-
-  const result = (await response.json()) as { html: string; groundingMetadata: any };
+  const result = await parseJsonResponse<{ html: string; groundingMetadata: any }>(
+    response,
+    `Zoning analysis failed (Status ${response.status})`
+  );
   const html = result.html || "";
 
   // 4. Extract and persist learned self-knowledge in LocalStorage
@@ -203,12 +252,10 @@ export const translateReport = async (htmlContent: string, targetLang: Language)
     body: JSON.stringify({ htmlContent, targetLang }),
   });
 
-  if (!response.ok) {
-    const err = (await response.json().catch(() => ({ message: response.statusText }))) as any;
-    throw new Error(err?.message || `Translation failed (Status ${response.status})`);
-  }
-
-  const data = (await response.json()) as any;
+  const data = await parseJsonResponse<{ translatedHtml: string }>(
+    response,
+    `Translation failed (Status ${response.status})`
+  );
   return data.translatedHtml;
 };
 
@@ -228,12 +275,10 @@ export const chatWithAssistant = async (
     body: JSON.stringify({ history, lastMessage, context }),
   });
 
-  if (!response.ok) {
-    const err = (await response.json().catch(() => ({ message: response.statusText }))) as any;
-    throw new Error(err?.message || `Assistant error (Status ${response.status})`);
-  }
-
-  const data = (await response.json()) as any;
+  const data = await parseJsonResponse<{ replyText: string }>(
+    response,
+    `Assistant error (Status ${response.status})`
+  );
   return data.replyText;
 };
 
@@ -242,11 +287,7 @@ export const chatWithAssistant = async (
 export const fetchAdminStats = async (): Promise<any> => {
   const headers = await getAuthHeaders();
   const res = await fetch('/api/admin/usage', { headers });
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({ message: res.statusText }))) as any;
-    throw new Error(err?.message || 'Failed to fetch admin stats');
-  }
-  return res.json();
+  return parseJsonResponse(res, 'Failed to fetch admin stats');
 };
 
 export const toggleAdminKillSwitch = async (disabled: boolean): Promise<any> => {
@@ -256,9 +297,5 @@ export const toggleAdminKillSwitch = async (disabled: boolean): Promise<any> => 
     headers,
     body: JSON.stringify({ disabled }),
   });
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({ message: res.statusText }))) as any;
-    throw new Error(err?.message || 'Failed to update kill switch');
-  }
-  return res.json();
+  return parseJsonResponse(res, 'Failed to update kill switch');
 };

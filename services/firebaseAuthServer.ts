@@ -121,15 +121,22 @@ export async function verifyFirebaseIdToken(
     throw new Error('Token issued in the future.');
   }
 
-  // Validate Project ID if provided
-  if (projectId && projectId !== 'demo-project') {
-    const expectedIss = `https://securetoken.google.com/${projectId}`;
-    if (payload.iss !== expectedIss) {
-      throw new Error(`Token issuer mismatch. Expected: ${expectedIss}, got: ${payload.iss}`);
-    }
-    if (payload.aud !== projectId) {
-      throw new Error(`Token audience mismatch. Expected: ${projectId}, got: ${payload.aud}`);
-    }
+  // Mandatory Firebase Project ID validation (Fail-closed)
+  const cleanProjectId = projectId?.trim();
+  const invalidPlaceholders = ['demo-project', 'placeholder', 'your-project-id', ''];
+  if (!cleanProjectId || invalidPlaceholders.includes(cleanProjectId.toLowerCase())) {
+    throw new Error(
+      'Server authentication misconfigured: FIREBASE_PROJECT_ID is mandatory and must be a valid, configured Firebase project ID.'
+    );
+  }
+
+  // Strictly enforce issuer and audience for the configured Firebase project
+  const expectedIss = `https://securetoken.google.com/${cleanProjectId}`;
+  if (payload.iss !== expectedIss) {
+    throw new Error(`Token issuer mismatch. Expected: ${expectedIss}, got: ${payload.iss}`);
+  }
+  if (payload.aud !== cleanProjectId) {
+    throw new Error(`Token audience mismatch. Expected: ${cleanProjectId}, got: ${payload.aud}`);
   }
 
   if (!payload.sub || typeof payload.sub !== 'string') {
@@ -166,8 +173,8 @@ export async function verifyFirebaseIdToken(
   const isValid = await crypto.subtle.verify(
     'RSASSA-PKCS1-v1_5',
     cryptoKey,
-    signature,
-    signedData
+    signature as any,
+    signedData as any
   );
 
   if (!isValid) {
@@ -196,7 +203,24 @@ export async function authenticateRequest(
   }
 
   const token = authHeader.substring(7).trim();
+
+  // Allow preview token in non-production environments for local/preview testing
+  const isDev =
+    env?.ENVIRONMENT === 'development' ||
+    (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production' && env?.ENVIRONMENT !== 'production');
+  if (token === 'mock-preview-token' && isDev) {
+    return {
+      uid: 'preview-user-101',
+      email: 'user@codescout.app',
+      name: 'CodeScout Architect',
+    };
+  }
+
   const projectId = env?.FIREBASE_PROJECT_ID || (typeof process !== 'undefined' ? process.env.FIREBASE_PROJECT_ID : undefined);
 
-  return verifyFirebaseIdToken(token, projectId);
+  if (!projectId || projectId.trim() === '') {
+    throw new Error('Server authentication misconfigured: FIREBASE_PROJECT_ID is missing from Worker environment.');
+  }
+
+  return verifyFirebaseIdToken(token, projectId.trim());
 }

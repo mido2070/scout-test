@@ -38,6 +38,8 @@ export function checkEdgeRateLimit(
   return { allowed: true, remaining: limit - current.count };
 }
 
+export const checkRateLimit = checkEdgeRateLimit;
+
 export function corsHeaders(origin = '*'): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': origin,
@@ -85,9 +87,9 @@ export function errorResponse(error: any, fallbackStatus = 500): Response {
     error?.status === 429
   ) {
     status = 429;
-  } else if (lowerMsg.includes('bot verification') || error?.status === 403) {
+  } else if (lowerMsg.includes('bot verification') || lowerMsg.includes('security check') || error?.status === 403) {
     status = 403;
-  } else if (lowerMsg.includes('paused') || error?.status === 503) {
+  } else if (lowerMsg.includes('paused') || lowerMsg.includes('unavailable') || lowerMsg.includes('misconfigured') || error?.status === 503) {
     status = 503;
   } else if (error?.status === 400 || lowerMsg.includes('missing required fields')) {
     status = 400;
@@ -99,6 +101,13 @@ export function errorResponse(error: any, fallbackStatus = 500): Response {
 /**
  * Executes an AI operation with full authentication, Turnstile verification,
  * and atomic Durable Object quota reservation.
+ * Enforces strict fail-closed security:
+ * - Missing USAGE_LIMITER -> 503
+ * - Unavailable quota storage -> 503
+ * - Daily quota exceeded -> 429
+ * - Missing or invalid Firebase authentication -> 401
+ * - Turnstile bot check failure -> 403
+ * - Never calls Gemini before successfully reserving quota.
  */
 export async function executeProtectedAiEndpoint(
   request: Request,
@@ -118,7 +127,7 @@ export async function executeProtectedAiEndpoint(
     );
   }
 
-  // 2. Strict Firebase Authentication
+  // 2. Strict Firebase Authentication (MANDATORY & VALIDATED)
   let user: VerifiedUser;
   try {
     user = await authenticateRequest(request, env);
@@ -131,45 +140,72 @@ export async function executeProtectedAiEndpoint(
     request.headers.get('cf-turnstile-response') ||
     request.headers.get('x-turnstile-token');
   const turnstileSecret = env?.TURNSTILE_SECRET_KEY;
+  const isDev = env?.ENVIRONMENT === 'development' || (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development');
 
-  if (turnstileSecret && featureName !== 'chat-assistant') {
-    const turnstileResult = await verifyTurnstileToken(turnstileToken, request, turnstileSecret);
-    if (!turnstileResult.success) {
-      return jsonResponse(
-        { message: 'Security check failed. Please refresh the page and verify you are human.' },
-        403
-      );
-    }
+  if (!turnstileSecret && !isDev) {
+    return jsonResponse(
+      { message: 'Security anti-bot service is not configured. AI operations are temporarily unavailable.' },
+      503
+    );
   }
 
-  // 4. Centralized Atomic Quota Reservation via Durable Object
-  let limiterStub: any = null;
-  if (env?.USAGE_LIMITER) {
-    try {
-      const id = env.USAGE_LIMITER.idFromName('global-coordinator');
-      limiterStub = env.USAGE_LIMITER.get(id);
-
-      const reservation = await limiterStub.checkAndReserve(user.uid, featureName, requestId);
-      if (!reservation.allowed) {
+  if (turnstileSecret) {
+    if (featureName === 'chat-assistant') {
+      // For chat: if a turnstile token is supplied, verify it strictly;
+      // authenticated users with valid sessions and DO rate limits are protected without challenging every bubble
+      if (turnstileToken) {
+        const turnstileResult = await verifyTurnstileToken(turnstileToken, request, turnstileSecret);
+        if (!turnstileResult.success) {
+          return jsonResponse(
+            { message: 'Security check failed. Please refresh the page and verify you are human.' },
+            403
+          );
+        }
+      }
+    } else {
+      // For heavy analysis operations: token is strictly mandatory and validated
+      const turnstileResult = await verifyTurnstileToken(turnstileToken, request, turnstileSecret);
+      if (!turnstileResult.success) {
         return jsonResponse(
-          {
-            message: reservation.reason || 'Daily free AI capacity reached.',
-            retryAfter: reservation.retryAfterSeconds,
-          },
-          reservation.status || 429
+          { message: 'Security check failed. Please refresh the page and verify you are human.' },
+          403
         );
       }
-    } catch (quotaError: any) {
-      console.error('[QuotaLimiter] Quota coordinator error:', quotaError);
-      // Fail closed as required by security guidelines
-      return jsonResponse(
-        { message: 'AI capacity coordinator is temporarily unavailable. Please try again shortly.' },
-        503
-      );
     }
   }
 
-  // 5. Execute Gemini AI logic
+  // 4. Centralized Atomic Quota Reservation via Durable Object (FAIL-CLOSED)
+  if (!env?.USAGE_LIMITER) {
+    return jsonResponse(
+      { message: 'AI capacity coordinator is temporarily unavailable (Missing USAGE_LIMITER binding).' },
+      503
+    );
+  }
+
+  let limiterStub: any = null;
+  try {
+    const id = env.USAGE_LIMITER.idFromName('global-coordinator');
+    limiterStub = env.USAGE_LIMITER.get(id);
+
+    const reservation = await limiterStub.checkAndReserve(user.uid, featureName, requestId);
+    if (!reservation.allowed) {
+      return jsonResponse(
+        {
+          message: reservation.reason || 'Daily free AI capacity reached.',
+          retryAfter: reservation.retryAfterSeconds,
+        },
+        reservation.status || 429
+      );
+    }
+  } catch (quotaError: any) {
+    console.error('[QuotaLimiter] Quota coordinator error:', quotaError);
+    return jsonResponse(
+      { message: 'AI capacity coordinator is temporarily unavailable (Storage error). Please try again shortly.' },
+      503
+    );
+  }
+
+  // 5. Execute Gemini AI logic (ONLY after quota reservation succeeded)
   let success = false;
   try {
     const result = await handler({ user, env, request, requestId });
@@ -179,7 +215,7 @@ export async function executeProtectedAiEndpoint(
     console.error(`[API ${featureName}] Execution failed:`, error?.message || error);
     return errorResponse(error);
   } finally {
-    // 6. Release lock and update metrics in Durable Object
+    // 6. Release in-progress lock and update completion metrics in Durable Object
     if (limiterStub) {
       try {
         await limiterStub.completeRequest(user.uid, featureName, success);

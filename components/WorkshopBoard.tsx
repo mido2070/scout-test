@@ -250,7 +250,7 @@ const WorkshopBoard: React.FC<WorkshopBoardProps> = ({ nodes, edges, isOpen, onC
                       <div>
                           <label className="block text-xs font-bold text-slate-500 mb-1">{t.title}</label>
                           <input 
-                            value={editingNode.title}
+                            value={editingNode.title || ''}
                             onChange={e => setEditingNode({...editingNode, title: e.target.value})}
                             className="w-full p-2.5 border border-sand-300 rounded-lg text-sm font-bold focus:ring-2 focus:ring-slate-800 focus:border-slate-800 outline-none"
                           />
@@ -258,7 +258,7 @@ const WorkshopBoard: React.FC<WorkshopBoardProps> = ({ nodes, edges, isOpen, onC
                       <div>
                           <label className="block text-xs font-bold text-slate-500 mb-1">{t.type}</label>
                           <select 
-                            value={editingNode.type}
+                            value={editingNode.type || 'CHALLENGE'}
                             onChange={e => setEditingNode({...editingNode, type: e.target.value as BoardNodeType})}
                             className="w-full p-2.5 border border-sand-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slate-800 focus:border-slate-800 outline-none"
                           >
@@ -268,7 +268,7 @@ const WorkshopBoard: React.FC<WorkshopBoardProps> = ({ nodes, edges, isOpen, onC
                       <div>
                           <label className="block text-xs font-bold text-slate-500 mb-1">{t.description}</label>
                           <textarea 
-                            value={editingNode.description}
+                            value={editingNode.description || ''}
                             onChange={e => setEditingNode({...editingNode, description: e.target.value})}
                             className="w-full p-2.5 border border-sand-300 rounded-lg text-sm min-h-[100px] focus:ring-2 focus:ring-slate-800 focus:border-slate-800 outline-none"
                           />
@@ -276,7 +276,7 @@ const WorkshopBoard: React.FC<WorkshopBoardProps> = ({ nodes, edges, isOpen, onC
                       <div>
                           <label className="block text-xs font-bold text-slate-500 mb-1">{t.stakeholder}</label>
                           <select 
-                            value={editingNode.stakeholder}
+                            value={editingNode.stakeholder || 'MUNICIPALITY'}
                             onChange={e => setEditingNode({...editingNode, stakeholder: e.target.value})}
                             className="w-full p-2.5 border border-sand-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-slate-800 focus:border-slate-800 outline-none"
                           >

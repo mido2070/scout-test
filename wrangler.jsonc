@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "codescout-pro",
+  "name": "scout-test",
   "main": "worker.ts",
   "compatibility_date": "2025-01-01",
   "compatibility_flags": [
@@ -9,6 +9,32 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "USAGE_LIMITER",
+        "class_name": "UsageLimiter"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "UsageLimiter"
+      ]
+    }
+  ],
+  "vars": {
+    "ADMIN_EMAIL": "mahmedzsayed@gmail.com",
+    "GEMINI_MODEL": "gemini-2.5-flash",
+    "FIREBASE_PROJECT_ID": "codescout-free",
+    "TURNSTILE_SITE_KEY": "",
+    "ENVIRONMENT": "production"
   }
 }

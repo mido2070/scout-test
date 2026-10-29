@@ -19,6 +19,7 @@ const CodeLibrary: React.FC = () => {
   // Form State
   const [uploadMode, setUploadMode] = useState<'FILE' | 'LINK'>('FILE');
   const [uploadForm, setUploadForm] = useState<Partial<LibraryDocument>>({
+    title: '',
     country: '',
     city: '',
     district: '',
@@ -26,6 +27,7 @@ const CodeLibrary: React.FC = () => {
     codeType: CodeType.ZONING,
     codeTypeCustom: '',
     coverage: CoverageType.CITY_WIDE,
+    year: '',
     language: 'en',
     notes: '',
     url: '',
@@ -506,7 +508,7 @@ const CodeLibrary: React.FC = () => {
                      <LinkIcon className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
                      <input 
                       type="url" 
-                      value={uploadForm.url}
+                      value={uploadForm.url || ''}
                       onChange={e => setUploadForm({...uploadForm, url: e.target.value})}
                       placeholder="https://authority.gov/regulations/zoning.pdf"
                       className="w-full pl-10 p-3 border border-sand-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition"
@@ -531,7 +533,7 @@ const CodeLibrary: React.FC = () => {
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-2">{t.codeType} *</label>
                   <select 
-                    value={uploadForm.codeType}
+                    value={uploadForm.codeType || CodeType.ZONING}
                     onChange={e => setUploadForm({...uploadForm, codeType: e.target.value as CodeType, codeTypeCustom: ''})}
                     className="w-full p-3 border border-sand-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none bg-white"
                   >
@@ -544,7 +546,7 @@ const CodeLibrary: React.FC = () => {
                     <label className="block text-xs font-bold text-slate-700 mb-2">Custom Code Type *</label>
                     <input 
                         type="text" 
-                        value={uploadForm.codeTypeCustom}
+                        value={uploadForm.codeTypeCustom || ''}
                         onChange={e => setUploadForm({...uploadForm, codeTypeCustom: e.target.value})}
                         placeholder="e.g. Industrial Guidelines"
                         className="w-full p-3 border border-amber-300 bg-amber-50 rounded-xl focus:ring-2 focus:ring-amber-500/20 outline-none"
@@ -556,7 +558,7 @@ const CodeLibrary: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 mb-2">{t.country} *</label>
                   <input 
                     type="text" 
-                    value={uploadForm.country}
+                    value={uploadForm.country || ''}
                     onChange={e => setUploadForm({...uploadForm, country: e.target.value})}
                     placeholder="e.g. Saudi Arabia"
                     className="w-full p-3 border border-sand-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition"
@@ -566,7 +568,7 @@ const CodeLibrary: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 mb-2">{t.city}</label>
                   <input 
                     type="text" 
-                    value={uploadForm.city}
+                    value={uploadForm.city || ''}
                     onChange={e => setUploadForm({...uploadForm, city: e.target.value})}
                     placeholder="e.g. Riyadh"
                     className="w-full p-3 border border-sand-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition"
@@ -576,7 +578,7 @@ const CodeLibrary: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 mb-2">{t.district}</label>
                   <input 
                     type="text" 
-                    value={uploadForm.district}
+                    value={uploadForm.district || ''}
                     onChange={e => setUploadForm({...uploadForm, district: e.target.value})}
                     placeholder="Optional"
                     className="w-full p-3 border border-sand-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition"
@@ -586,7 +588,7 @@ const CodeLibrary: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 mb-2">{t.authority}</label>
                   <input 
                     type="text" 
-                    value={uploadForm.authority}
+                    value={uploadForm.authority || ''}
                     onChange={e => setUploadForm({...uploadForm, authority: e.target.value})}
                     placeholder="e.g. RCRC"
                     className="w-full p-3 border border-sand-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition"
@@ -595,7 +597,7 @@ const CodeLibrary: React.FC = () => {
                  <div>
                   <label className="block text-xs font-bold text-slate-700 mb-2">{language === 'ar' ? 'نطاق التغطية' : 'Coverage Scope'}</label>
                   <select 
-                    value={uploadForm.coverage}
+                    value={uploadForm.coverage || CoverageType.CITY_WIDE}
                     onChange={e => setUploadForm({...uploadForm, coverage: e.target.value as CoverageType})}
                     className="w-full p-3 border border-sand-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none bg-white"
                   >
@@ -606,7 +608,7 @@ const CodeLibrary: React.FC = () => {
                   <label className="block text-xs font-bold text-slate-700 mb-2">{t.year}</label>
                   <input 
                     type="text" 
-                    value={uploadForm.year}
+                    value={uploadForm.year || ''}
                     onChange={e => setUploadForm({...uploadForm, year: e.target.value})}
                     placeholder="e.g. 2024"
                     className="w-full p-3 border border-sand-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition"
@@ -616,7 +618,7 @@ const CodeLibrary: React.FC = () => {
               <div>
                   <label className="block text-xs font-bold text-slate-700 mb-2">{t.notes}</label>
                   <textarea 
-                    value={uploadForm.notes}
+                    value={uploadForm.notes || ''}
                     onChange={e => setUploadForm({...uploadForm, notes: e.target.value})}
                     className="w-full p-3 border border-sand-200 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition"
                     rows={2}

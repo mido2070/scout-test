@@ -14,9 +14,12 @@ export async function verifyTurnstileToken(
   request: Request,
   secretKey?: string
 ): Promise<TurnstileVerificationResult> {
-  // If secret key is not configured, pass through (e.g., local development before setup)
+  // Fail closed if secret key is not configured
   if (!secretKey || secretKey.trim() === '') {
-    return { success: true };
+    return {
+      success: false,
+      errorCodes: ['missing-turnstile-secret-configuration'],
+    };
   }
 
   if (!token || token.trim() === '') {

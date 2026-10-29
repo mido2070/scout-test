@@ -1,6 +1,6 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
 import { PlotData, AttachedFile, LibraryDocument, CodeType, CoverageType } from '../types';
-import { MapPin, Ruler, Building2, Map as MapIcon, PenTool, Search, FileText, UploadCloud, X, File as FileIcon, Loader2, Navigation, BookPlus, Check, ChevronRight, Hash } from 'lucide-react';
+import { MapPin, Ruler, Building2, Map as MapIcon, PenTool, Search, FileText, UploadCloud, X, File as FileIcon, Loader2, Navigation, BookPlus, Check, ChevronRight, Hash, Info } from 'lucide-react';
 import MapModal from './MapModal';
 import { LanguageContext } from '../App';
 import { libraryDB } from '../services/libraryDB';
@@ -277,7 +277,7 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
                     <input
                         type="text"
                         placeholder={language === 'ar' ? 'مثال: المملكة العربية السعودية' : 'e.g. Saudi Arabia'}
-                        value={data.country}
+                        value={data.country || ''}
                         onChange={(e) => onChange('country', e.target.value)}
                         className="w-full h-12 px-4 rounded-xl border border-sand-200 bg-white/80 text-slate-900 text-sm font-medium focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-sand-400"
                     />
@@ -288,7 +288,7 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
                         <input
                         type="text"
                         placeholder={language === 'ar' ? 'مثال: الرياض' : 'e.g. Riyadh'}
-                        value={data.city}
+                        value={data.city || ''}
                         onChange={(e) => onChange('city', e.target.value)}
                         className={`w-full h-12 px-4 border border-sand-200 bg-white/80 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition text-sm font-medium text-slate-900 placeholder:text-sand-400 ${language === 'ar' ? 'pl-10' : 'pr-10'}`}
                         />
@@ -312,7 +312,7 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
                     <input
                         type="text"
                         placeholder={language === 'ar' ? 'ابحث عن شارع أو معلم...' : 'Search for street or landmark...'}
-                        value={data.address}
+                        value={data.address || ''}
                         onChange={(e) => onChange('address', e.target.value)}
                         className={`w-full h-12 px-4 border border-sand-200 bg-white/80 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition text-sm font-medium text-slate-900 placeholder:text-sand-400 ${language === 'ar' ? 'pl-12' : 'pr-12'}`}
                     />
@@ -333,7 +333,7 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
                     <input
                     type="text"
                     placeholder={t['district']}
-                    value={data.district}
+                    value={data.district || ''}
                     onChange={(e) => onChange('district', e.target.value)}
                     className="w-full h-12 px-4 rounded-xl border border-sand-200 bg-white/80 text-slate-900 text-sm font-medium focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-sand-400"
                     />
@@ -345,7 +345,7 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
                         <input
                             type="text"
                             placeholder="00.0000, 00.0000"
-                            value={data.gps}
+                            value={data.gps || ''}
                             onChange={(e) => onChange('gps', e.target.value)}
                             className={`w-full h-12 px-4 border border-sand-200 bg-white/80 rounded-xl focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition text-sm font-mono text-slate-900 placeholder:text-sand-400 ${language === 'ar' ? 'pr-10 pl-12' : 'pl-10 pr-12'}`}
                         />
@@ -380,7 +380,7 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
                      <input
                       type="text"
                       placeholder="0.0"
-                      value={(data as any)[field]}
+                      value={(data as any)[field] ?? ''}
                       onChange={(e) => onChange(field as any, e.target.value)}
                       className="w-full h-12 px-4 rounded-xl border border-sand-200 bg-white/80 text-slate-900 text-sm font-mono focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-sand-400"
                     />
@@ -408,7 +408,7 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
                 <input
                   type="text"
                   placeholder={t['projectPlaceholder']}
-                  value={data.projectType}
+                  value={data.projectType || ''}
                   onChange={(e) => onChange('projectType', e.target.value)}
                   className="w-full h-12 px-4 rounded-xl border border-sand-200 bg-white/80 text-slate-900 text-sm font-medium focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder:text-sand-400"
                 />
@@ -476,6 +476,19 @@ const InputForm: React.FC<InputFormProps> = ({ data, onChange, title, isActive }
                    onChange={handleFileChange}
                  />
             </div>
+         </div>
+
+         {/* Privacy & Free-Tier AI Document Processing Notice */}
+         <div className="mt-3 p-3.5 bg-slate-50 border border-sand-200 rounded-2xl text-[11px] text-slate-500 leading-relaxed flex items-start gap-2.5">
+           <Info className="w-4 h-4 text-brand-600 shrink-0 mt-0.5" />
+           <div>
+             <span className="font-bold text-slate-800">
+               {language === 'ar' ? 'إشعار الخصوصية ومعالجة المستندات (Free AI Tier): ' : 'Privacy & Document Processing Notice (Free AI Tier): '}
+             </span>
+             {language === 'ar'
+               ? 'تتم معالجة المستندات المرفقة بواسطة Google Gemini Free Tier وفقاً لبنود خدمة Google القياسية. يُرجى عدم رفع مخططات أو مستندات سرية أو بيانات خاصة بالعملاء. التحليل استرشادي للأبحاث ولا يشكل فتوى تنظيمية قانونية رسمية.'
+               : 'Uploaded documents are processed by Google Gemini under Free Tier service terms. Do not upload confidential client blueprints, proprietary plans, or sensitive documents. Outputs are an advisory research preview and do not constitute an official legal zoning determination.'}
+           </div>
          </div>
 
          {/* Attachments List */}
