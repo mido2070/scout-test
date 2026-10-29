@@ -4,21 +4,36 @@ import { AnalysisMode, PlotData, Language, PolicyData, LibraryDocument, PolicyUp
 export interface ApiSecurityContext {
   request?: Request;
   env?: any;
+  user?: {
+    uid: string;
+    email?: string;
+  };
 }
 
-export const getApiKey = (ctx?: ApiSecurityContext): string => {
-  // 1. User supplied BYOK header from client (highest priority, per-request)
-  const headerKey = ctx?.request?.headers?.get('x-gemini-api-key')?.trim();
-  if (headerKey) return headerKey;
+export const FREE_TIER_ALLOWED_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
+];
 
-  // 2. Explicit Cloudflare Worker environment secret
+export const getSafeModelName = (env?: any): string => {
+  const configured = env?.GEMINI_MODEL || (typeof process !== 'undefined' ? process.env.GEMINI_MODEL : undefined);
+  if (configured && FREE_TIER_ALLOWED_MODELS.includes(configured)) {
+    return configured;
+  }
+  return 'gemini-2.5-flash';
+};
+
+export const getApiKey = (ctx?: ApiSecurityContext): string => {
+  // Cloudflare Worker environment secret
   if (ctx?.env?.GEMINI_API_KEY && typeof ctx.env.GEMINI_API_KEY === 'string') {
     const workerSecret = ctx.env.GEMINI_API_KEY.trim();
     if (workerSecret) return workerSecret;
   }
 
-  // 3. Process environment (only during non-production local development)
-  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
+  // Local development fallback
+  if (typeof process !== 'undefined' && process.env) {
     if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY.trim();
     if (process.env.API_KEY) return process.env.API_KEY.trim();
   }
@@ -30,7 +45,7 @@ const getVerifiedApiKey = (ctx?: ApiSecurityContext): string => {
   const apiKey = getApiKey(ctx);
   if (!apiKey) {
     throw new Error(
-      "No Gemini API key provided. Please click the 'API Key' button in the top navigation to add your Gemini API key (BYOK), or set GEMINI_API_KEY in Cloudflare Worker settings."
+      "AI analysis is temporarily unavailable. Server-side Free Tier Gemini credentials are not yet configured."
     );
   }
   return apiKey;
@@ -96,30 +111,17 @@ const generatePrompt = (
     `;
 
   const sourceHierarchy = `
-    SOURCE OF TRUTH HIERARCHY (STRICT):
-    1. **PRIMARY (Library Sources)**: 
-       - **Uploaded PDFs & My Library**: Extract exact clauses and numeric requirements. 
-       - **Community/Official Links**: Use search to verify.
-       - These sources OVERRIDE general web search.
-    2. **SECONDARY (Specific Web Search)**: 
-       - Only if Library sources are missing specific data, search for Official Municipal Codes for this SPECIFIC District/Zone.
-       - Use the provided District Name, GPS, or City to find the specific zoning sub-category (e.g., "Residential A", "R-3").
-    3. **TERTIARY (Inference)**: 
-       - If no data found, infer from general city rules (Mark Confidence as LOW).
+    SOURCE OF TRUTH HIERARCHY:
+    1. **PRIMARY (Library Sources)**: Extract exact clauses and numeric requirements.
+    2. **SECONDARY (Uploaded Documents)**: Use the attached regulatory PDFs.
+    3. **TERTIARY (Zoning Norms)**: If specific local codes are missing, provide standard municipal code benchmarks and mark confidence as Low.
   `;
 
-  // --- MEMORY INJECTION ---
   const memoryBlock = learnedContext 
     ? `
-    *****************************************************
     [INTERNAL MEMORY / PRIOR KNOWLEDGE]
     You have previously analyzed this location (${dataA.city}, ${dataA.country}).
-    Here is what you learned from previous sessions:
-    
-    ${learnedContext}
-    
-    INSTRUCTION: Use this as a baseline, but valid Uploaded/Library PDFs still override this memory.
-    *****************************************************
+    Baseline notes: ${learnedContext}
     `
     : `[No prior memory for ${dataA.city}. Start fresh analysis.]`;
 
@@ -134,13 +136,8 @@ const generatePrompt = (
     ${memoryBlock}
 
     ${libraryContext ? `
-    *****************************************************
     [LIBRARY / OFFICIAL DOCUMENTS CONTEXT]
-    The user has the following official documents/links in the library for this location:
     ${libraryContext}
-    
-    INSTRUCTION: Prioritize these sources. Note the "Source Type" (My Library vs Community) in your output notes if relevant.
-    *****************************************************
     ` : ''}
 
     INPUT DATA:
@@ -197,7 +194,6 @@ const generatePrompt = (
           </tr>
        </thead>
        <tbody>
-          <!-- Rows for Setback calc vs Coverage calc -->
           <tr style="font-weight:bold; background-color: #f8fafc;">
              <td>GOVERNING LIMIT</td>
              <td>(Lesser value)</td>
@@ -232,31 +228,28 @@ const generatePrompt = (
         </tr>
       </thead>
       <tbody>
-        <!-- Comparison rows -->
       </tbody>
     </table>
     ` : ''}
 
     -------------------------------------------------------------------
-    SAFETY RULES:
-    1. Never invent exact legal numbers. If unsure, state "Advisory" or "Needs Confirmation".
-    2. If PDFs are uploaded (Direct or Library), they are the source of truth.
+    DISCLAIMER & PREVIEW NOTICE:
+    This report is an automated research preview for advisory planning purposes only. Verify all parameters with municipal zoning authorities.
     
     -------------------------------------------------------------------
     SELF-LEARNING PROTOCOL (HIDDEN OUTPUT):
-    At the absolute end of your response, after all HTML, you MUST generate a structured JSON block inside a comment.
     <!-- LEARNING_BLOCK_START
     {
       "city": "${dataA.city}",
       "country": "${dataA.country}",
-      "zoning_summary": "Extracted regulations for [District]",
+      "zoning_summary": "Extracted regulations for ${dataA.district || dataA.city}",
       "key_metrics": {
          "max_height": "...",
          "far": "...",
          "coverage": "...",
          "setbacks": "..."
       },
-      "source_quality": "High (PDF) | Medium (Search) | Low (Inferred)"
+      "source_quality": "High | Medium | Low"
     }
     LEARNING_BLOCK_END -->
   `;
@@ -271,194 +264,63 @@ export const analyzePolicy = async (
   ctx?: ApiSecurityContext
 ): Promise<string> => {
   const apiKey = getVerifiedApiKey(ctx);
+  const model = getSafeModelName(ctx?.env);
   const ai = new GoogleGenAI({ apiKey });
 
-  // 1. Prepare Context from Library
   let sourceContext = libraryDocs.map(d => 
-      `[Document ID: ${d.id}] Title: ${d.title} (${d.year}). Content Context: ${d.notes || 'No notes'}`
+      `[Document ID: ${d.id}] Title: ${d.title} (${d.year}). Context: ${d.notes || 'None'}`
   ).join('\n');
 
-  // 2. Prepare Context from Custom Session Sources (Links)
   const linkSources = policyData.customSources.filter(s => s.type === 'LINK');
   if (linkSources.length > 0) {
       sourceContext += '\n\n' + linkSources.map(l => `[Session Link] Title: ${l.title} URL: ${l.url}`).join('\n');
   }
 
-  // 3. Prepare Multimedia (Evidence + Custom File Sources)
   const parts: any[] = [];
   
-  // Add Evidence Files
   if (policyData.supportingFiles) {
-      for (const file of policyData.supportingFiles) {
+      for (const file of policyData.supportingFiles.slice(0, 3)) { // Max 3 files to preserve free limits
           parts.push({
               inlineData: { mimeType: file.type, data: file.data }
           });
-      }
-  }
-  // Add Custom Session Source Files
-  const fileSources = policyData.customSources.filter(s => s.type === 'FILE');
-  if (fileSources) {
-      for (const src of fileSources) {
-          if (src.data) {
-              parts.push({
-                  inlineData: { mimeType: 'application/pdf', data: src.data }
-              });
-          }
       }
   }
 
   const priorities = policyData.priorities || { speed: 3, safety: 5, economy: 3, feasibility: 4 };
   const targetLang = policyData.outputLanguage === 'bilingual' ? 'bilingual' : uiLanguage;
   
-  let langInstruction = "";
-  let mainDir = "ltr";
-  
-  if (targetLang === 'ar') {
-      langInstruction = `
-      ** STRICT LANGUAGE RULE: ARABIC ONLY **
-      The user wants the entire report in ARABIC. 
-      - Translate all headers, bullet points, table cells, and reasoning to Arabic.
-      - Do not include English unless necessary for citations.
-      - Use <div dir="rtl"> for the main container.
-      `;
-      mainDir = "rtl";
-  } else if (targetLang === 'en') {
-      langInstruction = `
-      ** STRICT LANGUAGE RULE: ENGLISH ONLY **
-      The user wants the entire report in ENGLISH.
-      - Translate all analysis to English.
-      `;
-  } else {
-      langInstruction = `
-      ** STRICT LANGUAGE RULE: BILINGUAL (ENGLISH + ARABIC) **
-      1. Bilingual Lock: Output MUST be fully bilingual. 
-      2. STRUCTURE: 
-         - For Titles/Headers: English on top, Arabic below.
-         - For Text Blocks: Use separate paragraphs for English and Arabic. DO NOT MIX in the same sentence.
-         - For Tables: Use English in the cell, followed by <br/> and Arabic translation.
-      3. ISOLATION: Wrap Arabic text in <span dir="rtl" lang="ar">...</span> tags to prevent scrambling.
-      `;
-  }
+  let langInstruction = targetLang === 'ar'
+    ? "** STRICT LANGUAGE RULE: ARABIC ONLY ** Use <div dir=\"rtl\"> for Arabic text."
+    : targetLang === 'en'
+      ? "** STRICT LANGUAGE RULE: ENGLISH ONLY **"
+      : "** STRICT LANGUAGE RULE: BILINGUAL (ENGLISH + ARABIC) **";
 
   const prompt = `
-      SYSTEM / DEVELOPER (Highest Priority)
-      You are CodeScout Pro – Policy Lab (Decision Desk). Produce a highly formal, executive "Official Memo" report.
+      You are CodeScout Pro – Policy Lab (Decision Desk). Produce an executive Official Policy Memo in HTML format.
       
-      HARD RULES:
+      RULES:
       ${langInstruction}
-      2. Evidence-Based: Use Workshop Notes + Policy Updates as primary evidence. State if evidence is missing.
-      3. No Hallucinations: Do not invent legal requirements. Mark uncertainties as "Needs confirmation".
-      4. Citations: Always cite sources (Library PDFs, Links).
+      No hallucinations. Mark uncertainties as "Needs confirmation".
       
       INPUTS:
       - Scope: ${policyData.city}, ${policyData.country} (${policyData.district || 'City-wide'})
       - Sector: ${policyData.sector === PolicySector.OTHER ? policyData.sectorCustom || 'Unspecified' : policyData.sector}
       - Core Objective: ${policyData.objectives.join('; ')}
       - Policy Context: ${policyData.policyContext || "None provided"}
-      - Evidence & Issues: Pain Points: [${policyData.painPoints.join(', ')}]. Qualitative: ${policyData.evidenceText}
-      - Sources: ${sourceContext || "No library sources. Search online."}
-      - Priority Sliders (0-5): Speed=${priorities.speed}, Safety=${priorities.safety}, Economy=${priorities.economy}, Feasibility=${priorities.feasibility}
+      - Pain Points: [${policyData.painPoints.join(', ')}]. Evidence: ${policyData.evidenceText}
+      - Priority Weights: Speed=${priorities.speed}, Safety=${priorities.safety}, Economy=${priorities.economy}, Feasibility=${priorities.feasibility}
       
-      REQUIRED OUTPUT STRUCTURE (HTML Format):
-      
-      <div class="report-content policy-memo" dir="${mainDir}">
-      
-      <!-- OFFICIAL HEADER TABLE -->
-      <table border="0" width="100%" style="border:none; margin-bottom: 30px; border-bottom: 2px solid #000;">
-          <tr>
-              <td width="30%" valign="top" style="border:none;">
-                 <div style="font-size:10px; color:#666;">AUTHORITY / MUNICIPALITY</div>
-                 <div style="font-weight:bold; font-size:14px; text-transform:uppercase;">${policyData.city} URBAN LAB</div>
-              </td>
-              <td width="40%" align="center" valign="middle" style="border:none;">
-                 <h1 style="margin:0; font-size:18px; text-transform:uppercase;">DECISION MEMORANDUM</h1>
-                 ${targetLang !== 'en' ? '<h1 style="margin:5px 0 0 0; font-size:18px; font-family:Cairo, sans-serif;">مذكرة قرار سياسات</h1>' : ''}
-              </td>
-              <td width="30%" align="right" valign="top" style="border:none;">
-                 <div style="font-size:10px;">DATE: ${new Date().toLocaleDateString()}</div>
-                 <div style="font-size:10px;">REF: PL-${Math.floor(Math.random()*10000)}</div>
-              </td>
-          </tr>
-      </table>
-
-      <!-- 1. EXECUTIVE SUMMARY (Boxed) -->
-      <div style="border: 1px solid #000; padding: 15px; margin-bottom: 30px; background-color: #f9f9f9;">
-          <h3 style="margin-top:0; border-bottom:1px solid #ccc; padding-bottom:5px;">EXECUTIVE SUMMARY ${targetLang !== 'en' ? ' / الملخص التنفيذي' : ''}</h3>
-          <p><strong>Subject:</strong> ...</p>
-          <p><strong>Recommendation:</strong> ...</p>
-      </div>
-
-      <!-- 2. PROBLEM DEFINITION -->
-      <h2>1.0 PROBLEM DEFINITION ${targetLang !== 'en' ? '<span style="float:right; font-family:Cairo;">1.0 تعريف المشكلة</span>' : ''}</h2>
-      <p>Analysis of regulatory ambiguity, conflicts, and data gaps.</p>
-      <ul>
-          <li>...</li>
-      </ul>
-
-      <!-- 3. POLICY OPTIONS -->
-      <h2>2.0 POLICY OPTIONS ${targetLang !== 'en' ? '<span style="float:right; font-family:Cairo;">2.0 خيارات السياسات</span>' : ''}</h2>
-      <table border="1" cellpadding="8" cellspacing="0" width="100%">
-          <thead>
-              <tr style="background-color: #f0f0f0;">
-                  <th width="20%">CRITERIA ${targetLang !== 'en' ? '<br/>المعيار' : ''}</th>
-                  <th width="26%">OPTION A (Quick) ${targetLang !== 'en' ? '<br/>خيار (أ)' : ''}</th>
-                  <th width="26%">OPTION B (Recommended) ${targetLang !== 'en' ? '<br/>خيار (ب)' : ''}</th>
-                  <th width="26%">OPTION C (Structural) ${targetLang !== 'en' ? '<br/>خيار (ج)' : ''}</th>
-              </tr>
-          </thead>
-          <tbody>
-              <tr>
-                  <td><strong>Mechanism</strong> ${targetLang !== 'en' ? '<br/><span dir="rtl">الآلية</span>' : ''}</td>
-                  <td>...</td>
-                  <td>...</td>
-                  <td>...</td>
-              </tr>
-          </tbody>
-      </table>
-
-      <!-- 4. TRADE-OFF ANALYSIS -->
-      <h2>3.0 TRADE-OFF ANALYSIS ${targetLang !== 'en' ? '<span style="float:right; font-family:Cairo;">3.0 تحليل المفاضلة</span>' : ''}</h2>
-      <p>Weighted scoring based on user priorities.</p>
-      <table border="1" cellpadding="5" cellspacing="0" width="100%">
-           <!-- Scoring table -->
-      </table>
-
-      <!-- 5. DRAFT AMENDMENT TEXT -->
-      <h2>4.0 DRAFT REGULATION TEXT ${targetLang !== 'en' ? '<span style="float:right; font-family:Cairo;">4.0 مسودة التنظيم</span>' : ''}</h2>
-      <table border="1" cellpadding="8" cellspacing="0" width="100%">
-          <thead>
-              <tr style="background-color: #f0f0f0;">
-                  <th width="40%">CURRENT GAP ${targetLang !== 'en' ? '<br/>الفجوة الحالية' : ''}</th>
-                  <th width="40%">PROPOSED TEXT ${targetLang !== 'en' ? '<br/>النص المقترح' : ''}</th>
-                  <th width="20%">REASONING ${targetLang !== 'en' ? '<br/>السبب' : ''}</th>
-              </tr>
-          </thead>
-          <tbody>
-              <!-- Rows -->
-          </tbody>
-      </table>
-
-      <!-- 6. NEXT STEPS -->
-      <h2>5.0 IMPLEMENTATION ${targetLang !== 'en' ? '<span style="float:right; font-family:Cairo;">5.0 التنفيذ</span>' : ''}</h2>
-      <ul>
-          <li><strong>Immediate:</strong> ...</li>
-      </ul>
-
-      <div style="margin-top:50px; border-top:1px solid #000; padding-top:10px; font-size:10px; text-align:center;">
-          GENERATED BY CODESCOUT PRO POLICY LAB - OFFICIAL USE ONLY
-      </div>
-
-      </div>
+      OUTPUT: Clean HTML only. Include Executive Summary, Problem Definition, Policy Options Table, Trade-off Matrix, and Draft Amendments.
   `;
 
   try {
       const response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model,
           contents: { parts: [{ text: prompt }, ...parts] }
       });
       return response.text || "";
-  } catch (error) {
-      console.error("[geminiServer] Policy Analysis Error", error);
+  } catch (error: any) {
+      console.error("[geminiServer] Policy Analysis Error:", error?.message || error);
       throw error;
   }
 };
@@ -471,94 +333,41 @@ export const refinePolicyReport = async (
   ctx?: ApiSecurityContext
 ): Promise<{ html: string; changeLog: string }> => {
   const apiKey = getVerifiedApiKey(ctx);
+  const model = getSafeModelName(ctx?.env);
   const ai = new GoogleGenAI({ apiKey });
 
-  // Prepare board summary if available
   let boardSummary = "No workshop board data.";
   if (updatePayload.boardContext && updatePayload.boardContext.nodes.length > 0) {
       const nodes = updatePayload.boardContext.nodes.map(n => 
           `- [${n.type}] "${n.title}" by ${n.stakeholder} (${n.status})`
       ).join('\n');
-      
-      const edges = updatePayload.boardContext.edges.map(e => {
-          const from = updatePayload.boardContext?.nodes.find(n => n.id === e.fromId);
-          const to = updatePayload.boardContext?.nodes.find(n => n.id === e.toId);
-          return from && to ? `- "${from.title}" ${e.relation} "${to.title}"` : '';
-      }).join('\n');
-
-      boardSummary = `
-      WORKSHOP BOARD CARDS:
-      ${nodes}
-      
-      RELATIONSHIPS:
-      ${edges}
-      `;
+      boardSummary = `WORKSHOP BOARD CARDS:\n${nodes}`;
   }
-
-  const targetLang = updatePayload.language; 
-  const langInstruction = targetLang === 'ar' 
-      ? "STRICTLY OUTPUT THE ENTIRE UPDATE IN ARABIC. Do not mix English."
-      : targetLang === 'en' 
-          ? "STRICTLY OUTPUT THE ENTIRE UPDATE IN ENGLISH." 
-          : "Keep output BILINGUAL (English then Arabic).";
 
   const prompt = `
       SYSTEM: You are CodeScout Pro Policy Editor.
-      TASK: Update an existing Policy Report (HTML) based on new user instructions (Policy Update).
-      
-      CONTEXT:
-      Country: ${policyData.country}
-      City: ${policyData.city}
-      
-      CURRENT REPORT HTML:
-      ${currentHtml}
-
-      USER UPDATE INSTRUCTIONS:
-      - Intent: ${updatePayload.intent}
-      - Domain: ${updatePayload.domain || 'Unspecified'}
-      - Workshop Notes (Evidence/Feedback): ${JSON.stringify(updatePayload.workshopNotes.map(n => `${n.type} from ${n.stakeholder}: ${n.text}`))}
-      - Requested Output Format: ${updatePayload.outputFormat}
-      - Detail Level: ${updatePayload.detailLevel}
-      - Language Setting: ${updatePayload.language}
-
+      TASK: Update this Policy Report HTML based on user instructions to Version ${versionNumber}.
+      Language: ${updatePayload.language}
+      Intent: ${updatePayload.intent}
+      Format: ${updatePayload.outputFormat}
       ${boardSummary}
-
-      RULES:
-      1. Return the FULL updated HTML document. Do not return just the changed parts.
-      2. Maintain the professional styling (Official Memo format with Header Table).
-      3. If "Output Format" changed, adjust the document structure accordingly.
-      4. Update the report to Version ${versionNumber}.
-      5. ${langInstruction}
-
-      **CRITICAL INSTRUCTION - DRAFT POLICY UPDATE (SECTION 4.0):**
-      - Ensure Section 4.0 covers ALL affected policies. Do NOT limit it to one single amendment. 
-      - If multiple regulations (e.g., Parking, Setbacks, Usage) are affected, create a row for EACH in the table.
-      - The first column "Current Status / Regulatory Gap" must describe the status quo or the gap if no text exists, not just "Current Text".
-
-      **CRITICAL INSTRUCTION - WORKSHOP IMPACT ANALYSIS:**
-      If Workshop Board Data is present:
-      1. Create a NEW section "6.0 Workshop Impact Assessment" (${targetLang === 'ar' ? '6.0 تقييم أثر ورشة العمل' : '6.0 Workshop Impact Assessment'}) at the end.
-      2. Analyze the connections: If a "POLICY_OPTION" solves a "PROBLEM", describe it.
-      3. For "APPROVED" cards, explicitly state they are now directives.
-      4. Assess IMPACT: State clearly if the proposed changes make the situation BETTER or WORSE compared to the status quo, and why.
-         - Use format: "Proposed: [Title] -> Addresses: [Problem] -> Impact: [Positive/Negative] because..."
-      5. Ensure this new section follows the selected language (${targetLang}).
       
-      OUTPUT:
-      Return ONLY the HTML string.
+      EXISTING HTML:
+      ${currentHtml.substring(0, 8000)}
+
+      Return the full updated HTML string only.
   `;
 
   try {
       const response = await ai.models.generateContent({
-          model: "gemini-3.8-flash",
+          model,
           contents: prompt
       });
       const html = response.text || "";
       const changeLog = `v${versionNumber}: ${updatePayload.intent.substring(0, 50)}...`;
-      
       return { html, changeLog };
-  } catch (error) {
-      console.error("[geminiServer] Refinement Error", error);
+  } catch (error: any) {
+      console.error("[geminiServer] Refinement Error:", error?.message || error);
       throw error;
   }
 };
@@ -575,45 +384,38 @@ export const analyzeZoning = async (
   ctx?: ApiSecurityContext
 ): Promise<{ html: string; groundingMetadata: any }> => {
   const apiKey = getVerifiedApiKey(ctx);
+  const model = getSafeModelName(ctx?.env);
   const ai = new GoogleGenAI({ apiKey });
 
-  // 2. Generate Prompt (passing pre-fetched contexts)
   const promptText = generatePrompt(mode, dataA, dataB, language, libraryContext, learnedContext);
-
-  // 3. Prepare Multi-modal Parts
   const parts: any[] = [{ text: promptText }];
   
-  // Attach PDFs from A
   if (dataA.attachments) {
-      for (const file of dataA.attachments) {
+      for (const file of dataA.attachments.slice(0, 2)) { // Max 2 files for safety
           parts.push({
               inlineData: { mimeType: file.type, data: file.data }
           });
       }
   }
-  // Attach PDFs from B (Comparison)
   if (mode === AnalysisMode.COMPARISON && dataB?.attachments) {
-       for (const file of dataB.attachments) {
+       for (const file of dataB.attachments.slice(0, 2)) {
           parts.push({
               inlineData: { mimeType: file.type, data: file.data }
           });
       }
   }
 
-  // 4. Call Gemini
+  // Pure zero-cost Gemini Free Tier execution: NO billable search grounding
   const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: { parts },
-      config: {
-          tools: [{ googleSearch: {} }],
-      }
+      model,
+      contents: { parts }
   });
 
   const html = response.text || "";
   
   return {
       html,
-      groundingMetadata: response.candidates?.[0]?.groundingMetadata
+      groundingMetadata: response.candidates?.[0]?.groundingMetadata || null
   };
 };
 
@@ -623,23 +425,19 @@ export const translateReport = async (
   ctx?: ApiSecurityContext
 ): Promise<string> => {
     const apiKey = getVerifiedApiKey(ctx);
+    const model = getSafeModelName(ctx?.env);
     const ai = new GoogleGenAI({ apiKey });
 
     const prompt = `
-        Translate the following HTML content to ${targetLang === 'ar' ? 'Arabic' : 'English'}.
-        
-        RULES:
-        1. Keep all HTML tags structure EXACTLY as is. Only translate the text content inside tags.
-        2. Use professional Urban Planning / Legal terminology.
-        3. Do not translate proper nouns if they are better kept in original (or provide transliteration).
-        4. If translating to Arabic, ensure numeric values use Western Arabic numerals (0-9) inside technical tables if appropriate for the context, or standard Arabic numerals.
+        Translate the following HTML report to ${targetLang === 'ar' ? 'Arabic' : 'English'}.
+        Keep HTML structure exactly intact. Use professional urban planning terminology.
         
         HTML:
-        ${htmlContent}
+        ${htmlContent.substring(0, 10000)}
     `;
 
     const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model,
         contents: prompt
     });
 
@@ -653,51 +451,25 @@ export const chatWithAssistant = async (
     ctx?: ApiSecurityContext
 ): Promise<string> => {
      const apiKey = getVerifiedApiKey(ctx);
+     const model = getSafeModelName(ctx?.env);
      const ai = new GoogleGenAI({ apiKey });
 
      let systemInstruction = `You are CodeScout Assistant, an expert AI in Zoning and Construction Law.
-     
-     CORE BEHAVIOR:
-     1. LANGUAGE ADAPTABILITY: You MUST detect the language of the user's latest message.
-        - If the user writes in Arabic, reply in ARABIC.
-        - If the user writes in English, reply in ENGLISH.
-        - Do not force the response language based on previous context if the user switches languages.
-     
-     2. FORMATTING & CLARITY:
-        - Use clear line breaks between paragraphs.
-        - Use bullet points (- ) for lists to ensure readability.
-        - Avoid long, dense blocks of text. Keep paragraphs short (3-4 lines max).
-        - When using technical terms in Arabic, optionally provide the English term in parentheses, e.g., "الارتداد (Setback)".
+     Reply in ${context.language === 'ar' ? 'Arabic' : 'English'}.
+     Keep paragraphs concise and professional.
      `;
      
-     if (context.policyContext) {
-        systemInstruction += `
-            ROLE: Policy Workshop Assistant.
-            
-            RULES:
-            1. Keep answers SHORT (Max 6 lines).
-            2. NO Markdown formatting (no bold, no lists, just plain text).
-            3. If user asks to "Change" something, explicitly state: "You should add this change: [One Line Description]".
-            
-            CONTEXT:
-            Current Report Draft Snippet: ${context.analysisResult ? context.analysisResult.substring(0, 1000) : 'None'}.
-            User Updates: ${JSON.stringify(context.policyContext)}.
-        `;
-     } else if (context.plot) {
-        systemInstruction += `
-            MODE: ZONING ANALYSIS.
-            Plot: ${context.plot.projectType} in ${context.plot.city}.
-            Report Content (HTML): ${context.analysisResult ? context.analysisResult.replace(/<[^>]*>?/gm, ' ') : "N/A"}.
-        `;
+     if (context.plot) {
+        systemInstruction += ` Plot Type: ${context.plot.projectType} in ${context.plot.city}, ${context.plot.country}.`;
      }
 
-     const chatHistory = history.slice(0, -1).map(h => ({
+     const chatHistory = history.slice(-6).map(h => ({
          role: h.role === 'model' ? 'model' : 'user',
          parts: h.parts
      }));
 
      const chat = ai.chats.create({
-         model: "gemini-3.8-flash",
+         model,
          config: { systemInstruction },
          history: chatHistory
      });
